@@ -1,0 +1,330 @@
+Authentication Basics
+
+1) Uer should be able to Login
+2) Users should be able to Register
+3) Users should be able to view other users
+4) Users should be able to privately message to others user.
+
+Safe storage password
+There are multiple ways to store password
+1) Plain text password
+2) Hashing the Password
+3) Hashing and Salting the password..
+It it good way because it it hashed using hashed and slating
+
+Updating the User entity
+1) Add property's in AppUser class i.e., PasswordHash, PasswordSalt
+e.g., public byte[] PasswordHash { get; set; }
+             public byte[] PasswordSalt { get; set; }
+2) Add those propery in Database go to terminal and excute following Command..
+dotnet ef migrations add UserPasswordAdded
+3) Add Column in Database using following command
+dotnet ef database update
+
+Creating Base Api Controller
+1) For avoid Repeting [ApiController] [Route("api/[controller]")] you should create one controller and define in that controller i.e., BaseAPiController
+e.g.,
+[ApiController]
+    [Route("api/[controller]")]
+    public class BaseApiController: ControllerBase
+    {
+       
+    }
+and inherit this controller in each and every controller.
+
+2) For creating collection of Postman
+Go to collection and click on import and import json
+
+Creating an account controller with a register end point
+
+1) Create Account controller and inherit from BaseApiController..
+e.g., public class AccountController : BaseApiController
+2) Create a constructor and initilize datacontext
+e.g.,
+private readonly DataContext _context;
+        public AccountController(DataContext context)
+        {
+            _context = context;
+        }
+
+where should use using keyword
+suppose we have so many clss in implementation class to class so in that case you should use using keyword
+e.g.,
+using var hmac = new HMACSHA512(); (using System.Security.Cryptography;)
+
+3) Create a Action with Name Register with async..
+e.g.,
+public async Task<ActionResult<AppUser>> Register(string username, string password)
+        {
+            using var hmac = new HMACSHA512();
+            var user = new AppUser
+            {
+                UserName = username,
+                PasswordHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(password)),
+                PasswordSalt = hmac.Key
+            };
+            _context.Users.Add(user);
+            await _context.SaveChangesAsync();
+            return user;
+        }
+
+
+Using the Debugger..
+
+1) Create Debugger file by using following command..
+ctrl+shift+p => generate
+2) Go to Debugger and select .Net Core Attach and click on start and search API..
+
+
+Using DTOs (Data transfer object)
+1) Create a folder in API i.e., DTOs and Add Class i.e., RegisterDto
+e.g.,
+public class RegisterDto
+    {
+        public string Username { get; set; }
+        public string Password { get; set; }
+    }
+2) Pass property by using RegisterDto class.
+e.g., public async Task<ActionResult<AppUser>> Register(RegisterDto registerDto)
+
+3) Add one method for Exists Validation.
+e.g.,
+public async Task<bool> UserExists(string Username)
+        {
+            return await _context.Users.AnyAsync( m=>m.UserName == Username.ToLower());
+        }
+4) Add validation in Register method for exists validation.
+if (await UserExists(registerDto.Username)) return BadRequest("Username is taken");
+
+Adding Validation to API Level
+
+1) go to RegisterDto and Add Validation on Property by using DataAnnotation (using System.ComponentModel.DataAnnotation)
+e.g.,
+[Required]
+        public string Username { get; set; }
+        [Required]
+        public string Password { get; set; }
+
+Adding Login Endpoint
+1) Create Action method with name Login.
+2) Create class in Dtos folder with name LoginDto and define two property are as below..
+public string Username { get; set; }
+        public string Password { get; set; }
+3) Validate Hashed format password
+e.g.,
+using var hmac = new HMACSHA512(user.PasswordSalt);
+            var computeHash = hmac.ComputeHash(Encoding.UTF8.GetBytes(loginDto.Password));
+            for (int i=0;i<computeHash.Length; i++)
+            {
+                if (computeHash[i] != user.PasswordHash[i]) return Unauthorized("Invalid Password");
+            }
+4) DataBase drop by using EF using following command..
+1) dotnet ef database drop
+2) dotnet ef database update
+Json Web Token
+
+Industry standard for tokens (RFC 7519)
+Self-contained and can contains..
+- Credentials
+- Claims
+- Other information (SecurityDescriptor)
+JWt Structure
+Header (Algorithm & Token Type)
+- alg(algorithm)
+- typ (Type)
+e.g.,
+{
+"alg":"HS512",
+"typ" :"JWT"
+}
+PayLoad (DATA) - About our claims
+nameid -
+role
+ndf - token can not be used before and after time..
+exp - (Expiry Data)
+iat - Issued at
+
+Verify Signature
+
+
+Benifits of JWT
+1) No session to manage - JWTs are self contained tokens
+2) Portable - A single token can be used with multiple token..
+3) No Cookies required - mobile friendly
+4) Performance - Once a token is issued, there is no need to make a database request to verify a users authentication.
+
+Adding a Token service..
+
+1) Create folder with name "Interfaces" and create interface name with "ITokenService" and define a method as follows..
+string CreateToken(AppUser user);
+2) Create folder with name "Services" and inside this, class with name Tokenservice and Implement ITokenservice Interface.
+
+3) Go to Startup.cs class and configure the service in ConfigureSerice method..
+AddSingleton:-
+For singleton when created or instantated and then it doent stop it till application stop it..
+AddScope :-
+AddScope is scope when request comes in and we have this service injected into that particular controller the new instance of this services is created.
+and when the request is finshied the service is disposed..
+AddTransient:-
+Services is created and destroyed as soon as method is finshed this is normally considered no quite right.
+4) Add a service using following code in ConfigureService method of Startup.cs class
+e.g.,
+Services.AddScope<ITokenService,TokenService> ();
+ITokenService -- Testing is main reason to use Interface..
+
+-----------------------------------------------------
+Adding the create token Logic..
+-----------------------------------------------------
+For this we need Helper package for Adding token Logic..
+
+Stetps:
+1) Go to Nuget Gallary..(ctrl+shift+p) and search Nuget Gallary
+2) Search system.Identitymodel.Token.JWT and Install this package..
+3) Go to TokenService in service folder and Generate constructor.
+  and declare readonly _Key variable with SymmetricSecurityKey (using Microsoft.IdentityModel.Tokens;)
+   (IConfiguration is used to Access configuration variable) and assign "TokenKey" to
+e.g.,
+private readonly SymmetricSecurityKey _Key;
+        public Tokenservice(IConfiguration config)
+        {
+            _Key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["TokenKey"]));
+        }
+4) Go to CreateToken Method of TokenService class and implement Claims,SigningCredentials and SicurityTokenDesciptor
+e.g.,
+public string CreateToken(AppUser user)
+        {
+            var claims = new List<Claim>
+            {
+                new Claim(JwtRegisteredClaimNames.NameId,user.UserName)
+            };
+
+            var creads = new SigningCredentials(_Key,SecurityAlgorithms.HmacSha512Signature);
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = System.DateTime.Now.AddDays(7),
+                SigningCredentials = creads
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+
+            return tokenHandler.WriteToken(token);
+        }
+
+
+Creating a UserDto and returning the token..
+
+1) Go to Account Service and add ITokenService as parameter in constructor and initialize field from parameter in Constructor..
+  e.g.,
+
+private readonly DataContext _context;
+        private readonly ITokenService _tokenService;
+        public AccountController(DataContext context, ITokenService tokenService)
+        {
+            _tokenService = tokenService;
+            _context = context;
+        }
+2) Go to Dtsos folder and create class with name UserDto and specify two properties i.e., Username, Token
+e.g
+public string Username { get; set; }
+        public string Token { get; set; }
+3) Go to Account controller and specify return type as UserDto and return into UserDto  by using following code..
+return new  UserDto
+            {
+                Username = user.UserName,
+                Token = _tokenService.CreateToken(user)
+
+            };
+4) For specify Token key you should go to appsetting.Development.json and add following code in this file..
+"TokenKey":"super secret unguessable Key",
+
+Adding the Authentication Middleware
+
+"Authorize" and "AllowAnonymous"
+-------------------------------
+Add some middleware to authenticate jwt token
+1) Go to Nuget Gallery (ctrl+shift+p) and open nuget Gallary and Search Microsoft.Aspnetcore.authentication.JwtBearer and install it.
+
+2) Go to startup.cs class and Add service for authentication in ConfigureService method by using following code..
+services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["TokenKey"])),
+                        ValidateIssuer = false,
+                        ValidateAudience = false
+                       
+                    };
+                });
+3) After that Go to configure method and use following code for Authentication (Ordering is very important should configure before UseAuthorization and after CORS)
+e.g.,
+app.UseAuthentication();
+
+Adding extension method..
+
+1) Create a folder with name "Extensions" in API project
+
+2) Add "static" class with name "ApplicationServiceExtensions.cs" for Extension "IserviceCollection"  in startup class.
+
+3) Go to ApplicationServiceExtensions class Add  a method AddApplicationServices() as a return type as a "IServiceCollection". and go to startup class and copy and past some
+service related methods.
+e.g.,
+ public static IServiceCollection AddApplicationServices(this IServiceCollection services, IConfiguration config)
+         {
+              services.AddDbContext<DataContext>(options =>
+            {
+                options.UseSqlServer(config.GetConnectionString("DefaultConnection"));
+            });
+            services.AddScoped<ITokenService,Tokenservice>();
+
+            return services;
+        }
+4) Consume this extension method in Configureservice method of startup class by using following method..
+services.AddApplicationServices(_config);
+
+5) For Identity Service create a Extension method of IdentityServiceExtension class
+public static IServiceCollection AddIdentitySerices(this IServiceCollection services, IConfiguration config)
+        {
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["TokenKey"])),
+                        ValidateIssuer = false,
+                        ValidateAudience = false
+                       
+                    };
+                });
+                return services;
+        }
+
+in startup class..
+services.AddIdentitySerices(_config);
+
+
+
+ and "IdentityServiceExtension.cs" in Extension Folder and move Identity Related Service move to in this Extension Method..
+
+public static IServiceCollection AddIdentitySerices(this IServiceCollection services, IConfiguration config)
+        {
+            services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(options =>
+                {
+                    options.TokenValidationParameters = new TokenValidationParameters
+                    {
+                        ValidateIssuerSigningKey = true,
+                        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(config["TokenKey"])),
+                        ValidateIssuer = false,
+                        ValidateAudience = false
+                       
+                    };
+                });
+                return services;
+        }
